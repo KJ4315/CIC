@@ -1,0 +1,722 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.CIC.server.mapper.CICMapper">
+	<select id="getMemberIdList" resultType="String">
+		select mem_id from member
+	</select>
+	
+	<insert id="addMember">
+		insert into member(mem_id, mem_pw, mem_name, mem_phone, mem_birth, mem_postcode, mem_address1, mem_address2) 
+		values(#{mem_id}, #{mem_pw}, #{mem_name}, #{mem_phone}, #{mem_birth}, #{mem_postcode}, #{mem_address1}, #{mem_address2})
+	</insert>
+	
+	<select id="getMember" resultType="Member">
+		select * from member where mem_id = #{id}
+	</select>
+	
+	<select id="getMainProjectList" resultType="ProjectList">
+	select pro_number, pro_title, pro_target, pro_price, pro_email, pro_thumbnail, pro_logo, mem_id, dDay, nvl(fundingCnt,0)
+		from ( select rownum as rnum, <![CDATA[a.pro_finish-sysdate]]> as dDay, a.*
+			   from ( select *
+			   		  from project
+			   		  <if test="subMenu != null">
+			   		  	<choose>
+			   		  		<when test="subMenu == 'all'">
+			   		  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0]]>
+			   		  		</when>
+			   		  		<when test="subMenu == 'new'">
+			   		  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0 and sysdate-pro_start < 15 and pro_finish-sysdate > 0]]>
+			   		  		</when>
+			   		  		<when test="subMenu == 'closeSoon'">
+			   		  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0 and pro_finish-sysdate < 15]]>
+			   		  		</when>
+			   		  		<when test="subMenu == 'close'">
+			   		  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[pro_finish-sysdate < 0]]>
+			   		  		</when>
+			   		  	</choose>
+			   		  </if>
+			   		  order by pro_number desc ) a )
+			   	left join ( select pro_number, count(fun_number) fundingCnt
+			   	   			from funding 
+			   	   			group by pro_number) using(pro_number)
+		where rnum between #{startNumber} and #{finishNumber}
+	</select>
+	
+	<select id="getMainProjectListCnt" resultType="int">
+		select count(pro_number)
+	   	from project
+			<if test="subMenu != null">
+		   		<choose>
+			  		<when test="subMenu == 'all'">
+			  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0]]>
+			  		</when>
+			  		<when test="subMenu == 'new'">
+			  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0 and sysdate-pro_start < 15 and pro_finish-sysdate > 0]]>
+			  		</when>
+			  		<when test="subMenu == 'closeSoon'">
+			  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0 and pro_finish-sysdate < 15]]>
+			  		</when>
+			  		<when test="subMenu == 'close'">
+			  			where typ_number like '%'||#{type}||'%' and pro_title like '%'||#{search}||'%' and <![CDATA[pro_finish-sysdate < 0]]>
+			  		</when>
+				</choose>
+			</if>
+	</select>
+	
+	<select id="getProject" resultType="Project">
+		select pro_number, pro_title, pro_target, pro_thumbnail, pro_logo, mem_id, <![CDATA[pro_finish-sysdate]]> as dDay, pro_price 
+		from project where pro_number = #{projectNumber}
+	</select>
+	
+	<insert id="addFunding">
+    	<selectKey resultType="AddFunding" keyProperty="fun_number,mon_number,pro_title,pro_price" order="BEFORE">
+        	SELECT * FROM 
+				(select coalesce(MAX(fun_number), 0) + 1 as fun_number from funding), 
+				(select coalesce(MAX(mon_number), 0) + 1 as mon_number from money), 
+				(select pro_title, pro_price from project where pro_number=#{pro_number})
+    	</selectKey>
+		{call
+        	declare
+        	begin
+        		insert into funding (fun_number, fun_name, fun_phone, fun_postcode, fun_address1, fun_address2, fun_description, mem_id, pro_number) 
+				values (#{fun_number}, #{fun_name}, #{fun_phone}, #{fun_postcode}, #{fun_address1}, #{fun_address2}, #{fun_description}, #{mem_id}, #{pro_number});
+        		
+        		INSERT into MONEY ( MON_NUMBER, MON_TYPE, MON_MONEY, MON_TITLE, MEM_ID, FUN_NUMBER ) 
+       			values( #{mon_number}, 1, #{pro_price}, #{pro_title}, #{mem_id}, #{fun_number});
+        	end
+		}
+	</insert>
+	
+	<update id="updateMember">
+		update member 
+		<if test="mem_pw!=null">
+			set mem_pw=#{mem_pw}, mem_name=#{mem_name}, mem_phone=#{mem_phone}, mem_postcode=#{mem_postcode}, mem_address1=#{mem_address1}, mem_address2=#{mem_address2}
+		</if>
+		<if test="mem_pw==null">
+			set mem_name=#{mem_name}, mem_phone=#{mem_phone}, mem_postcode=#{mem_postcode}, mem_address1=#{mem_address1}, mem_address2=#{mem_address2}
+		</if>
+		where mem_id = #{mem_id}
+	</update>
+	
+	<delete id="deleteMember">
+		delete 
+		from member
+		where mem_id=#{id}	
+	</delete>
+	
+	<select id="getFundingProjectList" resultType="ProjectList">
+		select pro_number, pro_title, pro_target, pro_price, pro_email, pro_thumbnail, pro_logo, mem_id, dDay, fundingCnt
+		from ( select rownum rnum, a.*
+			   from ( select pro_number, pro_title, pro_target, pro_price, pro_email, pro_thumbnail, pro_logo, mem_id, <![CDATA[pro_finish-sysdate]]> as dDay, nvl(fundingCnt,0) fundingCnt
+			   		  from project join ( select pro_number, count(fun_number) fundingCnt
+                                          from funding
+			   	   			              where mem_id = #{id}
+			   	   			              group by pro_number) using(pro_number)
+                      <if test="subMenu != null">
+			   		  	<choose>
+			   		  		<when test="subMenu == 'continue'">
+			   		  			where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]>
+			   		  		</when>
+			   		  		<when test="subMenu == 'close'">
+			   		  			where <![CDATA[pro_finish-sysdate < 0]]>
+			   		  		</when>
+			   		  	</choose>
+			   		  </if>
+			   		  order by pro_number desc ) a )
+  		  where rnum between #{startNumber} and #{finishNumber}
+	</select>
+	
+	<select id="getFundingProjectListCnt" resultType="int">
+		select count(pro_number)
+		from ( select pro_number
+			   from project join ( select distinct pro_number from funding where mem_id = #{id}) using(pro_number)
+			   <if test="subMenu != null">
+		   		  <choose>
+			  		  <when test="subMenu == 'continue'">
+		  		  			  where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]>
+		  		  		  </when>
+		  		  		  <when test="subMenu == 'close'">
+		  		  			  where <![CDATA[pro_finish-sysdate < 0]]>
+		   		  		  </when>
+					  </choose>
+				  </if>
+			 )
+	</select>
+	
+	<select id="getProjectList" resultType="ProjectList">
+		select pro_number, pro_title, pro_target, pro_price, pro_email, pro_thumbnail, pro_logo, mem_id, dDay, nvl(fundingCnt,0)
+		from ( select rownum as rnum, <![CDATA[a.pro_finish-sysdate]]> as dDay, a.*
+			   from ( select *
+			   		  from project
+			   		  <if test="subMenu != null">
+			   		  	<choose>
+			   		  		<when test="subMenu == 'continue'">
+			   		  			where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]> and mem_id = #{id}
+			   		  		</when>
+			   		  		<when test="subMenu == 'close'">
+			   		  			where <![CDATA[pro_finish-sysdate < 0]]> and mem_id = #{id}
+			   		  		</when>
+			   		  	</choose>
+			   		  </if>
+			   		  order by pro_number desc ) a )
+			   	left join ( select pro_number, count(fun_number) fundingCnt
+			   	   			from funding
+			   	   			group by pro_number) using(pro_number)
+		where rnum between #{startNumber} and #{finishNumber}
+	</select>
+	
+	<select id="getProjectListCnt" resultType="int">
+		select count(pro_number)
+		from project
+	    	<if test="subMenu != null">
+   		    	<choose>
+	  		    	<when test="subMenu == 'continue'">
+  		  				where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]> and mem_id = #{id}
+  		  		  	</when>
+  		  		  	<when test="subMenu == 'close'">
+  		  				where <![CDATA[pro_finish-sysdate < 0]]> and mem_id = #{id}
+   		  		  	</when>
+			  	</choose>
+		    </if>
+	</select>
+	
+	<select id="getProjectListAll" resultType="ProjectList">
+	select pro_number, pro_title, pro_target, pro_price, pro_email, pro_thumbnail, pro_logo, mem_id, dDay, nvl(fundingCnt,0)
+		from ( select rownum as rnum, <![CDATA[a.pro_finish-sysdate]]> as dDay, a.*
+			   from ( select *
+			   		  from project
+			   		  <if test="subMenu != null">
+ 		    		  	 <choose>
+	  		    			<when test="subMenu == 'continue'">
+  		  						where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]>
+  		  		  			</when>
+		  		  		  	<when test="subMenu == 'close'">
+		  		  				where <![CDATA[pro_finish-sysdate < 0]]>
+		   		  		  	</when>
+					  	</choose>
+				   	  </if>
+			   		  order by pro_number desc ) a )
+			   	left join ( select pro_number, count(fun_number) fundingCnt
+			   	   			from funding 
+			   	   			group by pro_number) using(pro_number)
+		where rnum between #{startNumber} and #{finishNumber}
+	</select>
+	
+	<select id="getProjectListAllCnt" resultType="int">
+		select count(pro_number)
+	   	from project
+			<if test="subMenu != null">
+	   			<choose>
+		   			<when test="subMenu == 'continue'">
+	  					where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]>
+	  				</when>
+			  		<when test="subMenu == 'close'">
+			  			where <![CDATA[pro_finish-sysdate < 0]]>
+	 		  		</when>
+		  		</choose>
+	   	  	</if>
+	</select>
+	 
+	<select id="getFundingMemberList" resultType="FundingMember">
+		select id, name, phone, address, fundingCnt
+		from ( select rownum rnum, a.* 
+		  	   from ( select mem_id id, fun_name name, fun_phone phone, concat(concat(fun_address1,' '),fun_address2) address, count(fun_name) fundingCnt
+					  from funding
+					  where pro_number = #{number}
+					  group by fun_name, mem_id, fun_phone, concat(concat(fun_address1,' '),fun_address2)) a
+			   where name like '%'||#{search}||'%' or id like '%'||#{search}||'%')
+		where rnum between #{startNumber} and #{endNumber}
+	</select>
+	
+	<select id="getFundingMemberListCnt" resultType="int">
+		select count(name)
+  	    from ( select mem_id id, fun_name name, fun_phone phone, concat(concat(fun_address1,' '),fun_address2) address, count(fun_name) fundingCnt
+			   from funding
+			   where pro_number = #{number}
+			   group by fun_name, mem_id, fun_phone, concat(concat(fun_address1,' '),fun_address2))
+	    where name like '%'||#{search}||'%' or id like '%'||#{search}||'%' 
+	</select>
+	
+	<select id='getProjectJoinCnt' resultType="int">
+		select count(fun_number)
+		from funding
+		where pro_number = #{number}
+	</select>
+	
+	<delete id="deleteProject">
+		delete from project where pro_number = #{number}
+	</delete>
+	
+	<select id="getFundingDetailList" resultType="FundingDetail">
+		select num, title, period, name, address
+		from ( select rownum rnum, num, title, period, name, address
+			   from ( select fun_number num, title, period, fun_name name, concat(concat(fun_address1,' '),fun_address2) address 
+		       	  	  from funding join ( select pro_number, pro_title title, concat(concat(pro_start,' ~ '),pro_finish) period 
+		       						   	  from project
+		       						   	  where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]> ) using(pro_number)
+		       	   	  where mem_id = #{id}
+		       	   	  order by fun_number desc)
+			   <if test="type != null">
+				   <choose>
+				  	   <when test="type == 'title'">
+						   where title like '%'||#{search}||'%'
+					   </when>
+					   <when test="type == 'name'">
+						   where name like '%'||#{search}||'%'
+					   </when>
+					   <when test="type == 'address'">
+						   where address like '%'||#{search}||'%'
+					   </when>
+				   </choose>
+			   </if> )
+	  where rnum between #{startNumber} and #{finishNumber} 
+	</select>
+	
+	<select id="getFundingDetailListCnt" resultType="int">
+		select count(fun_number)
+			from ( select fun_number, pro_title title, concat(concat(fun_address1,' '),fun_address2) address, fun_name name, mem_id
+       			   from funding join ( select pro_number, pro_title
+                           			   from project 
+                           			   where <![CDATA[sysdate-pro_start > 0 and pro_finish-sysdate > 0]]> )
+                    			using(pro_number) )
+        where mem_id = #{id}
+        <if test="type != null">
+			<choose>
+				<when test="type == 'title'">
+					and title like '%'||#{search}||'%'
+				</when>
+				<when test="type == 'name'">
+					and name like '%'||#{search}||'%'
+				</when>
+				<when test="type == 'address'">
+					and address like '%'||#{search}||'%'
+				</when>
+			</choose>
+		</if>
+	</select>
+	
+	<delete id="deleteFundingDetailList">
+		delete from funding where fun_number = #{number}
+	</delete>
+	
+	<delete id="deleteMoneyList">
+		delete from money where fun_number = #{number}
+	</delete>
+
+	<select id="findId" resultType="String">
+		select mem_id
+		from member
+		where mem_name = #{name} and mem_phone = #{phone} and mem_birth = #{birth}
+	</select>
+
+	<update id="findPw">
+		update member
+		set mem_pw = #{pw}
+		where mem_id = #{id}
+	</update>
+
+	<select id="getRecentlyNewsList" resultType="RecentlyNews">
+		select new_number, new_title, new_description, new_register, pro_number
+		from ( select rownum rnum, new_number, new_title, new_description, to_char(new_register, 'yyyy-mm-dd') new_register, pro_number
+		       from news
+		       where pro_number = #{number} and new_title like '%'||#{search}||'%'
+		       order by new_number desc )
+		where rnum between #{startNumber} and #{finishNumber}
+	</select>
+
+	<select id="getRecentlyNewsListMaxPage" resultType="int">
+		select count(new_number)
+		from news
+		where pro_number = #{number} and new_title like '%'||#{search}||'%'
+	</select>
+	
+	<delete id="deleteRecentlyNews">
+		delete from news
+		where new_number = #{number}
+	</delete>
+	
+	<insert id="addRecentlyNews">
+		<selectKey keyProperty="new_number" resultType="string" order="BEFORE">
+			select coalesce(MAX(new_number), 0) + 1 as new_number
+            from news
+		</selectKey>
+		insert into news(new_number, new_title, new_description, pro_number) 
+		values(#{new_number}, #{new_title}, #{new_description}, #{pro_number})
+	</insert>
+
+	<update id="updateRecentlyNews">
+		update news
+		set new_title = #{new_title}, new_description = #{new_description}
+		where new_number = #{new_number}
+	</update>
+	
+	<select id="getProjectResult" resultType="Schedule">
+		select pro_number, pro_title, case when pro_price * nvl(fundingCnt,0) / pro_target * 100 >= 100 then 'Success'
+                                      else 'Fail'
+                                      end result
+		from ( select pro_number, pro_title, pro_target, pro_price 
+       		   from project
+       		   where <![CDATA[pro_finish = to_char(sysdate-1,'YY/MM/DD')]]> )left join ( select pro_number, count(fun_number) fundingCnt
+                                                   							 			 from funding 
+                                                   							 			 group by pro_number) using(pro_number)
+	</select>
+	
+	<!-- Schedule -->
+	<select id="getFundingJoinList" resultType="FundingJoin">
+		select fun_number, mem_id id, fun_name name, fun_phone phone
+		from funding
+		where pro_number = #{pro_number}
+	</select>
+	<update id="updateMoneyHistory">
+		update money 
+		<choose>
+			<when test="result == 'Success'">
+				set mon_type = 2
+				where fun_number = #{fun_number}
+			</when>
+			<when test="result == 'Fail'">
+				set mon_type = 3
+				where fun_number = #{fun_number}
+			</when>
+		</choose>
+	</update>
+	
+	<select id="getProjectDDay" resultType="float">
+		select <![CDATA[pro_finish-sysdate]]> dDay
+		from project
+		where pro_number = #{pro_number}
+	</select>
+	
+	<select id="checkMember" resultType="Member">
+		select *
+		from member
+		where mem_id = #{id} and mem_name = #{name} and mem_phone = #{phone}
+	</select>
+	
+	
+	
+	
+	
+	
+	
+	
+	<select id="getTypeList" resultType="Type">
+		select * from TYPE
+	</select>
+	
+   <insert id="addProject" parameterType="Project">
+       <selectKey keyProperty="pro_number" resultType="int" order="BEFORE">
+          select coalesce(MAX(pro_number), 0) + 1 as pro_number
+            from project
+       </selectKey>
+      INSERT INTO PROJECT (PRO_NUMBER, PRO_TITLE, PRO_TARGET, PRO_THUMBNAIL, PRO_LOGO, PRO_START, PRO_FINISH, MEM_ID, TYP_NUMBER, PRO_PRICE, PRO_EMAIL) 
+      values( #{pro_number}, #{pro_title}, #{pro_target}, #{pro_thumbnail}, #{pro_logo}, #{pro_start}, #{pro_finish}, #{mem_id}, #{typ_number}, #{pro_price}, #{pro_email} )
+   </insert>
+   
+   <insert id="addContent" parameterType="Content">
+       <selectKey keyProperty="con_number" resultType="int" order="BEFORE">
+          select coalesce(MAX(con_number), 0) + 1 as con_number
+          from CONTENT
+       </selectKey>
+       INSERT INTO CONTENT (CON_NUMBER, CON_TYPE, CON_CONTENT, PRO_NUMBER) 
+       values( #{con_number}, #{con_type}, #{con_content}, #{pro_number})
+   </insert>
+   
+   <insert id="addEvent" keyProperty="EVE_NUMBER">
+       <selectKey keyProperty="EVE_NUMBER" resultType="int" order="BEFORE">
+          select coalesce(MAX(eve_number), 0) + 1 as EVE_NUMBER
+            from event
+       </selectKey>
+       INSERT INTO EVENT (EVE_NUMBER, EVE_TITLE, EVE_DESCRIPTION, EVE_THUMBNAIL, EVE_IMAGE, MEM_ID)
+       VALUES (#{EVE_NUMBER}, #{EVE_TITLE}, #{EVE_DESCRIPTION}, #{EVE_THUMBNAIL}, #{EVE_IMAGE}, #{MEM_ID})
+   </insert>
+   
+   <insert id="addNotice" keyProperty="NOT_NUMBER">
+       <selectKey keyProperty="NOT_NUMBER" resultType="int" order="BEFORE">
+          select coalesce(MAX(not_number), 0) + 1 as NOT_NUMBER
+            from notice
+       </selectKey>
+       INSERT INTO NOTICE (NOT_NUMBER, NOT_TITLE, NOT_DESCRIPTION, MEM_ID)
+       VALUES ( #{NOT_NUMBER}, #{NOT_TITLE}, #{NOT_DESCRIPTION}, #{MEM_ID} )
+   </insert>
+   
+   <insert id="addServiceCenter" keyProperty="SER_NUMBER">
+       <selectKey keyProperty="SER_NUMBER" resultType="int" order="BEFORE">
+          select coalesce(MAX(ser_number), 0) + 1 as SER_NUMBER
+            from SERVICECENTER
+       </selectKey>
+       INSERT INTO SERVICECENTER ( SER_NUMBER, SER_TITLE, SER_DESCRIPTION, MEM_ID )
+       VALUES ( #{SER_NUMBER}, #{SER_TITLE}, #{SER_DESCRIPTION}, #{MEM_ID} )
+   </insert>
+   
+   <select id="getNoticeCnt" resultType="String">
+		SELECT count(*) FROM NOTICE
+   </select>
+   
+   <select id="searchNoticeCnt" resultType="String">
+		SELECT count(*) FROM NOTICE where NOT_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%'
+   </select>
+   
+   <select id="getNoticeList" resultType="Notice">
+		select * from (select ROWNUM as rnum, a.* from (SELECT * FROM notice order by not_NUMBER desc) a) where rnum between #{startNum} and #{endNum}
+   </select>
+   
+   <select id="searchNoticeList" resultType="Notice">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+				SELECT * FROM notice where NOT_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%' order by not_NUMBER desc 
+			) a
+		) where rnum between #{startNum} and #{endNum}
+   </select>
+   
+   <select id="getEventCnt" resultType="String">
+		SELECT count(*) FROM Event
+   </select>
+   
+   <select id="searchEventCnt" resultType="String">
+		SELECT count(*) FROM Event where EVE_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%'
+   </select>
+   
+   <select id="getEventList" resultType="Event">
+		select * from (select ROWNUM as rnum, a.* from (SELECT * FROM EVENT order by eve_NUMBER desc) a) where rnum between #{startNum} and #{endNum}
+   </select>
+   
+   <select id="searchEventList" resultType="Event">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+				SELECT * FROM EVENT where EVE_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%' order by eve_NUMBER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+   </select>
+   
+   
+   <select id="getServiceCenterCnt" resultType="String">
+		SELECT count(*) FROM ServiceCenter
+   </select>
+   
+   <select id="searchServiceCenterCnt" resultType="String">
+		SELECT count(*) FROM ServiceCenter where SER_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%'
+   </select>
+   
+   <select id="getServiceCenterList" resultType="ServiceCenter">
+		select * from (select ROWNUM as rnum, a.* from (SELECT * FROM SERVICECENTER order by ser_NUMBER desc) a) where rnum between #{startNum} and #{endNum}
+   </select>
+   
+   <select id="searchServiceCenterList" resultType="ServiceCenter">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+				SELECT * FROM SERVICECENTER where SER_TITLE like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%' order by ser_NUMBER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+   </select>
+
+   <update id="updateNotice" parameterType="Notice">
+       UPDATE NOTICE SET NOT_TITLE=#{NOT_TITLE}, NOT_DESCRIPTION=#{NOT_DESCRIPTION} WHERE NOT_NUMBER=#{NOT_NUMBER}
+   </update>
+   
+   <update id="updateServiceCenter" parameterType="ServiceCenter">
+       UPDATE SERVICECENTER SET SER_TITLE=#{SER_TITLE}, SER_DESCRIPTION=#{SER_DESCRIPTION} WHERE SER_NUMBER=#{SER_NUMBER}
+   </update>
+   
+   <insert id="updateEvent">
+   	   UPDATE EVENT SET EVE_TITLE=#{EVE_TITLE}, EVE_DESCRIPTION=#{EVE_DESCRIPTION}, EVE_THUMBNAIL=#{EVE_THUMBNAIL}, EVE_IMAGE=#{EVE_IMAGE}
+   	   WHERE EVE_NUMBER=#{EVE_NUMBER}
+   </insert>
+
+   <delete id="deleteEvent" parameterType="int">
+   	   Delete from Event WHERE EVE_NUMBER=#{num}
+   </delete>
+   
+   <delete id="deleteNotice">
+       Delete from NOTICE WHERE NOT_NUMBER=#{num} 
+   </delete>
+   
+   <delete id="deleteServiceCenter">
+       DELETE from SERVICECENTER WHERE SER_NUMBER=#{num}
+   </delete>
+   
+   <insert id="addCareer" parameterType="Career">
+       <selectKey keyProperty="car_number" resultType="int" order="BEFORE">
+            select coalesce(MAX(car_number), 0) + 1 as car_number
+            from CAREER
+       </selectKey>
+		{call
+        	declare
+        	begin
+            	INSERT INTO CAREER ( CAR_NUMBER, CAR_ORG, CAR_ACT, CAR_START, CAR_FINISH, MEM_ID )
+       			VALUES ( #{car_number}, #{car_org}, #{car_act}, #{car_start}, #{car_finish}, #{mem_id} );
+            	update member set MEM_REQUEST=1 where mem_id=#{mem_id};
+        	end
+		}
+   </insert>
+   
+   	<select id="getMemberList" resultType="Member">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+                select MEM_ID, MEM_NAME, MEM_PHONE, MEM_BIRTH, MEM_POSTCODE, MEM_ADDRESS1, MEM_ADDRESS2, MEM_REQUEST, MEM_REGISTER, GRA_NUMBER from Member
+                order by MEM_REGISTER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+	</select>
+	
+	<select id="getCreatorRequestList" resultType="Member">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+                select * from (
+                    select MEM_ID, MEM_NAME, MEM_PHONE, MEM_BIRTH, MEM_POSTCODE, MEM_ADDRESS1, MEM_ADDRESS2, MEM_REQUEST, MEM_REGISTER, GRA_NUMBER from Member where MEM_REQUEST=1
+                ) order by MEM_REGISTER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+	</select>
+   
+   	<select id="searchMemberList" resultType="Member">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+                select MEM_ID, MEM_NAME, MEM_PHONE, MEM_BIRTH, MEM_POSTCODE, MEM_ADDRESS1, MEM_ADDRESS2, MEM_REQUEST, MEM_REGISTER, GRA_NUMBER from Member
+                where MEM_NAME like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%' order by MEM_REGISTER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+	</select>
+	
+	<select id="searchCreatorRequestList" resultType="Member">
+		select * from (
+			select ROWNUM as rnum, a.* from (
+                select * from (
+                    select MEM_ID, MEM_NAME, MEM_PHONE, MEM_BIRTH, MEM_POSTCODE, MEM_ADDRESS1, MEM_ADDRESS2, MEM_REQUEST, MEM_REGISTER, GRA_NUMBER from Member where MEM_REQUEST=1
+                ) where MEM_NAME like '%'||#{key}||'%' or MEM_ID like '%'||#{key}||'%' order by MEM_REGISTER desc
+			) a
+		) where rnum between #{startNum} and #{endNum}
+	</select>
+	
+   <select id="getMemberCnt" resultType="int">
+		SELECT count(*) FROM MEMBER
+   </select>
+   
+   <select id="searchMemberCnt" resultType="int">
+		select count(*) from member where MEM_ID like '%'||#{key}||'%' or MEM_NAME like '%'||#{key}||'%'
+   </select>
+   
+   <select id="getCreatorRequestMemberCnt" resultType="int">
+		SELECT count(*) FROM MEMBER where mem_request=1
+   </select>
+   
+   <select id="searchCreatorRequestMemberCnt" resultType="int">
+		select count(*) from member where MEM_ID like '%'||#{key}||'%' or MEM_NAME like '%'||#{key}||'%' and mem_request=1
+   </select>
+   
+   <select id="getCreatorRequestMember" resultType="Career">
+		select * from CAREER where MEM_ID=#{userId}
+   </select>
+
+
+	<select id="handleCreatorRequest">
+		<if test="decision != null">
+			<choose>
+				<when test="decision == 'accept'">
+					UPDATE MEMBER SET MEM_REQUEST=0, GRA_NUMBER=1 where MEM_ID=#{userId}
+				</when>
+				<when test="decision == 'deny'">
+					{call
+						declare
+						begin
+							UPDATE MEMBER SET MEM_REQUEST=0 where MEM_ID=#{userId};
+							DELETE FROM CAREER where mem_id=#{userId};
+						end
+					}
+				</when>
+			</choose>
+		</if>
+	</select>
+	
+	<select id="getContentDetails" resultType="Content">
+		select * from CONTENT where pro_number = #{projectNum}
+	</select>
+	
+	<select id="getProjectDetails" resultType="ProjectInformation">
+		select * from PROJECT where pro_number = #{projectNum}
+	</select>
+	
+	<select id="getProjectSupport" resultType="FundingSupport">
+		select * from (select ROWNUM as rnum, a.* from (
+			select FUN_NUMBER, FUN_NAME, FUN_DESCRIPTION, FUN_REGISTER
+			from FUNDING where PRO_NUMBER=#{projectNum} order by FUN_NUMBER desc
+		) a) where rnum between #{startNum} and #{endNum}
+	</select>
+	<select id="getProjectSupportCnt" resultType="int">
+		select count(*) from FUNDING where PRO_NUMBER=#{projectNum}
+	</select>
+	
+	<update id="updateServiceCenterSolution">
+		update SERVICECENTER set SER_SOLUTION=#{solution} where SER_NUMBER=#{num}
+	</update>
+
+	<update id="deleteServiceCenterSolution">
+		update SERVICECENTER set SER_SOLUTION=' ' where SER_NUMBER=#{num}
+	</update>
+	
+	
+	
+	
+	
+	<update id="updateProject">
+      UPDATE PROJECT SET 
+      	PRO_TITLE=#{pro_title}, PRO_TARGET=#{pro_target}, PRO_THUMBNAIL=#{pro_thumbnail}, PRO_LOGO=#{pro_logo},
+      	PRO_START=#{pro_start}, PRO_FINISH=#{pro_finish}, MEM_ID=#{mem_id}, TYP_NUMBER=#{typ_number}, PRO_PRICE=#{pro_price}, PRO_EMAIL=#{pro_email}
+      WHERE PRO_NUMBER=#{pro_number}
+   </update>
+   
+   <update id="updateContent">
+       <selectKey keyProperty="con_number" resultType="int" order="BEFORE">
+       	SELECT CASE
+        	WHEN cnt = 0 THEN (select coalesce(MAX(con_number), 0) + 1 as con_number from CONTENT)
+        	WHEN cnt = 1 THEN (select con_number from (select ROWNUM as rnum, a.* from (select CON_NUMBER as con_number from content where PRO_NUMBER=#{pro_number} order by CON_NUMBER) a) where rnum=#{con_number})
+       		END AS con_number
+		FROM (select count(*) as cnt from (select ROWNUM as rnum, a.* from (select CON_NUMBER as con_number from content where PRO_NUMBER=#{pro_number} order by CON_NUMBER) a) where rnum=#{con_number})  
+       </selectKey>
+       {call
+        	declare
+        	begin
+        		delete from content where con_number=#{con_number};
+        		INSERT INTO CONTENT (CON_NUMBER, CON_TYPE, CON_CONTENT, PRO_NUMBER) 
+       			values( #{con_number}, #{con_type}, #{con_content}, #{pro_number});
+        	end
+		}
+   </update>
+	
+	<select id="checkProjectWriter" resultType="String">
+   		select MEM_ID from PROJECT where PRO_NUMBER=#{num}
+   </select>
+   
+   <select id="getMoneyDetails" resultType="Money">
+   		select * from MONEY where mem_id=#{userId} order by mon_register desc
+   </select>
+   
+   <insert id="chargeMoney">
+   		<selectKey keyProperty="mon_number" resultType="int" order="BEFORE">
+			select coalesce(MAX(mon_number), 0) + 1 as mon_number
+            from MONEY
+		</selectKey>
+		insert into MONEY (MON_NUMBER, MON_TYPE, MON_MONEY, MON_TITLE, MEM_ID, FUN_NUMBER)
+		values(#{mon_number}, 0, #{money}, '-', #{userId}, 0)
+   </insert>
+
+
+   <select id="checkAvailableMoney" resultType="int">
+		<![CDATA[
+		SELECT CASE
+    		WHEN available < pro_price then 0
+    		WHEN available >= pro_price then 1
+   			END AS con_number
+		FROM
+			(select available, pro_price from (
+				select a-b-c available from (
+					select NVL(sum(mon_money),0) a from money where mon_type=0 and mem_id=#{username}
+					), (
+					select NVL(sum(mon_money),0) b from money where mon_type=1 and mem_id=#{username}
+					), (select NVL(sum(mon_money),0) c from money where mon_type=2 and mem_id=#{username})
+				),
+        	(select pro_price from project where pro_number = #{num}))
+        ]]>
+   </select>
+	
+</mapper>
